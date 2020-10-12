@@ -11,6 +11,13 @@
 #include "json.h"
 #include "cost_time.h"
 
+static std::chrono::milliseconds NowMs()
+{
+	using namespace std::chrono;
+	auto now = system_clock::now();
+	auto now_ms = duration_cast<std::chrono::milliseconds>(time_point_cast<milliseconds>(now).time_since_epoch());
+	return now_ms;
+}
 
 static std::string NanoTime()
 {
@@ -36,6 +43,24 @@ public:
 
 			DoJobThread();
 
+			if (WaitDoneTime > std::chrono::milliseconds(0))
+			{
+				bool bDone = true;
+				for (auto& It : ThreadDataCenter)
+				{
+					if (It.size() > 0)
+					{
+						bDone = false;
+						break;
+					}
+				}
+				auto now_ms = NowMs();
+				if (bDone || now_ms > WaitDoneTime)
+				{
+					bThreadStop = true;
+				}
+			}
+
 
 			auto End = std::chrono::system_clock::now();
 			auto Duration = End - StartTime;
@@ -57,11 +82,12 @@ public:
 
 			auto& DataCenter = ThreadDataCenter[Old];
 			// 每次发MaxSendSize
-			int Begin = 0;
+			size_t Begin = 0;
+			size_t End = 0;
 
 			while (Begin < DataCenter.size() && !bThreadStop)
 			{
-				int End = Begin;
+				End = Begin;
 				size_t Count = 0;
 
 				while (End < DataCenter.size())
@@ -78,8 +104,6 @@ public:
 				// 发送[Begin, End)之间的数据
 				if (Count > 0)
 				{
-					End = Begin + 1;
-
 					std::stringstream ss;
 					ss << "{\"streams\":[";
 					for (auto i = Begin; i < End; i++)
@@ -108,18 +132,44 @@ public:
 							{
 								std::cout << "推送数据失败, code=" << Ret.code << ", body=" << Ret.body << std::endl;
 							}
+							else
+							{
+								std::cout << "推送数据成功! code=" << Ret.code << ", body=" << Ret.body << std::endl;
+							}
 						}
 					}
 				}
 
 				Begin = End;
+
+				// 如果通知结束，那么不循环执行，防止超过WaitDoneTime
+				if (WaitDoneTime > std::chrono::milliseconds(0))
+				{
+					break;
+				}
 			}
 
-			DataCenter.clear();
+			if (End == DataCenter.size()) 
+			{
+				DataCenter.clear();
+			}
+			else
+			{
+				DataCenter.erase(DataCenter.begin() + Begin, DataCenter.begin() + End);
+			}
 		}
 	}
-	void Init(const char* HttpUrl)
+	void Init(const char* HttpUrl, int MinWaitTimeMs, int MaxSendByte)
 	{
+		if (MaxSendByte > 0)
+		{
+			MaxSendSize = MaxSendByte;
+		}
+		if (MinWaitTimeMs > 0)
+		{
+			MinWaitTime = std::chrono::milliseconds(MinWaitTimeMs);
+		}
+
 		Host = HttpUrl;
 		Host += "/loki/api/v1/push";
 		ThreadDataCenter[0].reserve(256);
@@ -131,18 +181,26 @@ public:
 		threadHandle = move(t);
 
 	}
-	void Destroy()
-	{		
+	void Destroy(int MaxWaitTimeMs)
+	{
+		if (MaxWaitTimeMs == 0)
+		{
+			bThreadStop = true;
+		}
+		else
+		{
+			WaitDoneTime = NowMs();
+			WaitDoneTime += std::chrono::milliseconds(MaxWaitTimeMs);
+		}
+
+		// 等待线程结束
+		threadHandle.join();
+
 		{
 			std::lock_guard<std::recursive_mutex> locker(CurlLock);
 			curl_easy_cleanup(CurlHandle);
 			CurlHandle = nullptr;
 		}
-
-		bThreadStop = true;
-
-		// 等待线程结束
-		threadHandle.join();
 	}
 
 	// Inherited via LokiClientWorker
@@ -190,6 +248,8 @@ private:
 	// 线程
 	std::thread threadHandle;
 	bool bThreadStop = false;
+	bool bWaitDone = false;	// 等待全部发送完毕，才结束线程
+	std::chrono::milliseconds WaitDoneTime = std::chrono::milliseconds(0);
 	std::chrono::milliseconds MinWaitTime = std::chrono::milliseconds(1000);
 
 	// CURL
@@ -203,14 +263,14 @@ private:
 	std::recursive_mutex DataLock;
 };
 
-LOKICPP_DLL_API LokiClientWorker* InitWorker(const char* HttpUrl)
+LOKICPP_DLL_API LokiClientWorker* InitWorker(const char* HttpUrl, int MinWaitTimeMs, int MaxSendByte)
 {
 	auto Ret = new LokiClientWorkerInside();
-	Ret->Init(HttpUrl);
+	Ret->Init(HttpUrl, MinWaitTimeMs, MaxSendByte);
 	return Ret;
 }
 
-LOKICPP_DLL_API void DestroyWorker(LokiClientWorker* InWorker)
+LOKICPP_DLL_API void DestroyWorker(LokiClientWorker* InWorker, int MaxWaitTimeMs)
 {
 	if (InWorker != nullptr)
 	{
@@ -218,7 +278,7 @@ LOKICPP_DLL_API void DestroyWorker(LokiClientWorker* InWorker)
 		if (WorkerInside)
 		{
 			FAutoDumpCostTime AutoDumpTime("销毁");
-			WorkerInside->Destroy();
+			WorkerInside->Destroy(MaxWaitTimeMs);
 		}
 		delete InWorker;
 	}

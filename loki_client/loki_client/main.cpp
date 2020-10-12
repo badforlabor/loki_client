@@ -10,19 +10,19 @@
 
 int main()
 {
-	auto One = InitWorker("http://10.62.117.69:3100");
+	auto One = InitWorker("http://10.62.117.69:3100", 100, 16 * 1024);
 
 	std::map<std::string, std::string> Labels;
 	Labels["labelkey"] = "label_value";
 	Labels["app"] = "test_cpp";
 
-	for (int i = 0; i < 10000; i++)
+	for (int i = 0; i < 1000; i++)
 	{
-		One->Send(Labels, "msg:" + std::to_string(i));
-		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+		One->Send(Labels, "msg=" + std::to_string(i));
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 	}
 
-	DestroyWorker(One);
+	DestroyWorker(One, 1000);
 
 	system("pause");
 }

@@ -12,16 +12,16 @@
 namespace cereal
 {
 	//! Saving for std::map<std::string, std::string>
-	template <class Archive, class C, class A> inline
-		void save(Archive & ar, std::map<std::string, std::string, C, A> const & map)
+	template <class Archive> inline
+		void save(Archive & ar, std::map<std::string, std::string> const & map)
 	{
 		for (const auto & i : map)
 			ar(cereal::make_nvp(i.first, i.second));
 	}
 
 	//! Loading for std::map<std::string, std::string>
-	template <class Archive, class C, class A> inline
-		void load(Archive & ar, std::map<std::string, std::string, C, A> & map)
+	template <class Archive> inline
+		void load(Archive & ar, std::map<std::string, std::string> & map)
 	{
 		map.clear();
 
@@ -46,6 +46,5 @@ namespace cereal
 	{
 		archive(cereal::make_nvp("stream", o.Labels));
 		archive(cereal::make_nvp("values", o.Values));
-		archive(cereal::make_nvp("a", 1));
 	}
 }

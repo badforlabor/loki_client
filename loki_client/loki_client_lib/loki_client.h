@@ -17,5 +17,8 @@ public:
 	virtual void Send(const std::map<std::string, std::string>& Labels, const std::string& Msg) = 0;
 };
 
-LOKICPP_DLL_API LokiClientWorker* InitWorker(const char* HttpUrl);
-LOKICPP_DLL_API void DestroyWorker(LokiClientWorker* InWorker);
+// MinWaitTimeMs:每隔多长时间发一次包；MaxSendByte:每个包体的上限
+LOKICPP_DLL_API LokiClientWorker* InitWorker(const char* HttpUrl, int MinWaitTimeMs = 0, int MaxSendByte = 0);
+
+// MaxWaitTimeMs 最多等待时间。
+LOKICPP_DLL_API void DestroyWorker(LokiClientWorker* InWorker, int MaxWaitTimeMs = 0);
