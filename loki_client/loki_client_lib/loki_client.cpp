@@ -11,6 +11,34 @@
 #include "json.h"
 #include "cost_time.h"
 
+static void DebugLog(const std::string& str)
+{
+	std::cout << str.c_str() << std::endl;
+	::OutputDebugStringA(str.c_str());
+	::OutputDebugStringA("\n");
+}
+inline std::string ToString()
+{
+	return "";
+}
+template<typename One, typename ...Types>
+std::string ToString(const One& one, const Types&... t)
+{
+	std::string outStr;
+
+	std::stringstream ss;
+	ss << one;
+	outStr += ss.str();
+
+	outStr += ToString(t...);
+	return outStr;
+}
+template<typename One, typename ...Types>
+void TLog(const One& one, const Types&... t)
+{
+	DebugLog(ToString(one, t...));
+}
+
 static std::chrono::milliseconds NowMs()
 {
 	using namespace std::chrono;
@@ -130,11 +158,13 @@ public:
 
 							if (Ret.code != 200 && Ret.code != 204)
 							{
-								std::cout << "推送数据失败, code=" << Ret.code << ", body=" << Ret.body << std::endl;
+								//std::cout << "推送数据失败, code=" << Ret.code << ", body=" << Ret.body << std::endl;
+								TLog("推送数据失败, code=", Ret.code, ", body=", Ret.body);
 							}
 							else
 							{
-								std::cout << "推送数据成功! code=" << Ret.code << ", body=" << Ret.body << std::endl;
+								//std::cout << "推送数据成功! code=" << Ret.code << ", body=" << Ret.body << std::endl;
+								TLog("推送数据成功! code=", Ret.code, ", body=", Ret.body);
 							}
 						}
 					}
@@ -204,6 +234,7 @@ public:
 	}
 
 	// Inherited via LokiClientWorker
+	// 要保证多线程安全
 	virtual void Send(const std::map<std::string, std::string>& Labels, const std::string & Msg) override
 	{
 		if (Msg.size() == 0)
